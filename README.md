@@ -4,14 +4,31 @@ Este es un sistema de escritorio desarrollado en **Java** para la gestión admin
 
 ## 📸 Capturas de Pantalla
 
-*(Reemplaza los enlaces con las fotos de tu sistema)*
-*Aquí puedes subir fotos de tu menú principal y tu PDF.*
+Menu
+
 <img width="831" height="640" alt="image" src="https://github.com/user-attachments/assets/2393c914-fa90-44cf-afeb-f17eb3dc9d98" />
+
+Clientes
+
 <img width="932" height="567" alt="image" src="https://github.com/user-attachments/assets/b17ca50d-e0aa-42e0-9798-4b1444dd5030" />
+
+Familiares
+
 <img width="962" height="661" alt="image" src="https://github.com/user-attachments/assets/71e49fff-5409-4485-9951-992ab078e62e" />
+
+Inventario
+
 <img width="934" height="580" alt="image" src="https://github.com/user-attachments/assets/75238c1c-4679-4608-804d-304c58226bcc" />
+
+Proveedores
+
 <img width="936" height="570" alt="image" src="https://github.com/user-attachments/assets/110d6da3-e420-471a-adcc-2d58a80da76c" />
+
+Facturacion
+
 <img width="1130" height="688" alt="image" src="https://github.com/user-attachments/assets/dbcae26d-a1c2-43bf-a6ee-66264bd50744" />
+
+Factura
 <img width="591" height="555" alt="image" src="https://github.com/user-attachments/assets/e8b5a93f-4f12-4044-97bc-db291f13e733" />
 
 
