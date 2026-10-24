@@ -20,18 +20,14 @@ public class ControladorClientes implements ActionListener {
         this.vista = vista;
         this.modeloDAO = new ClienteDAO();
 
-        // Escuchadores de botones
         this.vista.getBtnGuardar().addActionListener(this);
         this.vista.getBtnEditar().addActionListener(this);
         this.vista.getBtnEliminar().addActionListener(this);
         this.vista.getBtnLimpiar().addActionListener(this);
         this.vista.getBtnVolver().addActionListener(this);
         this.vista.getBtnBuscar().addActionListener(this);
-
-        // ¡NUEVO! Permite buscar presionando "Enter" en el campo de búsqueda
         this.vista.getTxtBuscar().addActionListener(this);
 
-        // Evento para seleccionar una fila de la tabla y cargarla en el formulario
         this.vista.getTablaClientes().addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -39,7 +35,6 @@ public class ControladorClientes implements ActionListener {
             }
         });
 
-        // Cargar todos los clientes al iniciar
         cargarTablaClientes("");
     }
 
@@ -53,22 +48,18 @@ public class ControladorClientes implements ActionListener {
             eliminarCliente();
         } else if (e.getSource() == vista.getBtnLimpiar()) {
             vista.limpiarCampos();
-            vista.getTablaClientes().clearSelection(); // Quitar selección de la tabla
+            vista.getTablaClientes().clearSelection(); 
             cargarTablaClientes("");
         } else if (e.getSource() == vista.getBtnVolver()) {
             vista.dispose();
         } else if (e.getSource() == vista.getBtnBuscar() || e.getSource() == vista.getTxtBuscar()) {
-            // Si presiona el botón o presiona Enter en el campo de texto
             String filtro = vista.getTxtBuscar().getText().trim();
             cargarTablaClientes(filtro);
         }
     }
 
     private void guardarCliente() {
-        if (camposObligatoriosVacios()) {
-            JOptionPane.showMessageDialog(vista, "La cédula y el nombre son obligatorios.", "Advertencia", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
+        if (!validarCampos(true)) return;
 
         String cedula = vista.getTxtCedula().getText().trim();
         String nombre = vista.getTxtNombre().getText().trim();
@@ -89,15 +80,12 @@ public class ControladorClientes implements ActionListener {
     private void editarCliente() {
         String cedula = vista.getTxtCedula().getText().trim();
 
-        if (cedula.isEmpty()) {
+        if (cedula.isEmpty() || cedula.equals("V-")) {
             JOptionPane.showMessageDialog(vista, "Seleccione un cliente de la tabla para editar.", "Advertencia", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
-        if (camposObligatoriosVacios()) {
-            JOptionPane.showMessageDialog(vista, "El nombre no puede estar vacío al editar.", "Advertencia", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
+        if (!validarCampos(false)) return; // false porque estamos editando (no validamos si la cédula existe para él mismo)
 
         String nombre = vista.getTxtNombre().getText().trim();
         String telefono = vista.getTxtTelefono().getText().trim();
@@ -116,12 +104,17 @@ public class ControladorClientes implements ActionListener {
     }
 
     private void eliminarCliente() {
-        String cedula = vista.getTxtCedula().getText().trim();
-
-        if (cedula.isEmpty()) {
+        // 1. Leemos la fila directamente de la tabla
+        int filaSeleccionada = vista.getTablaClientes().getSelectedRow();
+        
+        if (filaSeleccionada == -1) {
             JOptionPane.showMessageDialog(vista, "Seleccione de la tabla el cliente que desea eliminar.", "Advertencia", JOptionPane.WARNING_MESSAGE);
             return;
         }
+
+        // 2. Obtenemos la cédula de esa fila
+        int filaModelo = vista.getTablaClientes().convertRowIndexToModel(filaSeleccionada);
+        String cedula = vista.getModeloTabla().getValueAt(filaModelo, 0).toString();
 
         int confirmar = JOptionPane.showConfirmDialog(vista, 
                 "¿Está seguro de eliminar al cliente con cédula " + cedula + "?\nEsta acción no se puede deshacer.", 
@@ -132,9 +125,9 @@ public class ControladorClientes implements ActionListener {
             if (exito) {
                 JOptionPane.showMessageDialog(vista, "¡Cliente eliminado correctamente!", "Éxito", JOptionPane.INFORMATION_MESSAGE);
                 vista.limpiarCampos();
+                vista.getTablaClientes().clearSelection();
                 cargarTablaClientes("");
             } else {
-                // Mensaje mejorado por si el cliente tiene facturas asociadas (Llave Foránea)
                 JOptionPane.showMessageDialog(vista, "Error al eliminar. Es posible que el cliente tenga familiares o facturas asociadas.", "Error", JOptionPane.ERROR_MESSAGE);
             }
         }
@@ -143,11 +136,10 @@ public class ControladorClientes implements ActionListener {
     private void cargarDatosEnFormulario() {
         int filaSeleccionada = vista.getTablaClientes().getSelectedRow();
         if (filaSeleccionada != -1) {
-            // Convertir el índice de la vista al índice del modelo (protege contra futuras ordenaciones)
             int filaModelo = vista.getTablaClientes().convertRowIndexToModel(filaSeleccionada);
             
             vista.getTxtCedula().setText(vista.getModeloTabla().getValueAt(filaModelo, 0).toString());
-            vista.getTxtCedula().setEnabled(false); // No permitimos cambiar la cédula primaria al editar
+            vista.getTxtCedula().setEnabled(false); 
             
             vista.getTxtNombre().setText(String.valueOf(vista.getModeloTabla().getValueAt(filaModelo, 1)));
             vista.getTxtTelefono().setText(String.valueOf(vista.getModeloTabla().getValueAt(filaModelo, 2)));
@@ -157,7 +149,7 @@ public class ControladorClientes implements ActionListener {
 
     private void cargarTablaClientes(String filtro) {
         DefaultTableModel modeloTabla = vista.getModeloTabla();
-        modeloTabla.setRowCount(0); // Limpiar tabla
+        modeloTabla.setRowCount(0);
 
         List<String[]> lista;
         if (filtro.isEmpty()) {
@@ -171,9 +163,59 @@ public class ControladorClientes implements ActionListener {
         }
     }
 
-    // Método auxiliar para mantener el código limpio (DRY)
-    private boolean camposObligatoriosVacios() {
-        return vista.getTxtCedula().getText().trim().isEmpty() || 
-               vista.getTxtNombre().getText().trim().isEmpty();
+    // ==========================================
+    // MÉTODOS DE VALIDACIÓN
+    // ==========================================
+    private boolean validarCampos(boolean esNuevo) {
+        String cedula = vista.getTxtCedula().getText().trim();
+        String nombre = vista.getTxtNombre().getText().trim();
+        String telefono = vista.getTxtTelefono().getText().trim();
+        String direccion = vista.getTxtDireccion().getText().trim();
+
+        // 1. Validar Cédula (V- seguido de 7 u 8 números)
+        if (!cedula.matches("^V-\\d{7,8}$")) {
+            JOptionPane.showMessageDialog(vista, 
+                "Cédula inválida.\nDebe comenzar con 'V-' seguido de 7 u 8 números (Ej: V-12345678).", 
+                "Error de Validación", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        // 2. Validar Nombre (Solo letras y espacios)
+        if (!nombre.matches("^[a-zA-ZáéíóúÁÉÍÓÚñÑ\\s]+$")) {
+            JOptionPane.showMessageDialog(vista, 
+                "Nombre inválido.\nSolo se permiten letras.", 
+                "Error de Validación", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        // 3. Validar Teléfono (Exactamente 11 números)
+        if (!telefono.matches("^\\d{11}$")) {
+            JOptionPane.showMessageDialog(vista, 
+                "Teléfono inválido.\nDebe contener exactamente 11 números (Ej: 04121234567).", 
+                "Error de Validación", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        // 4. Validar Dirección (Letras, números y puntos)
+        if (!direccion.matches("^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ.\\s]+$")) {
+            JOptionPane.showMessageDialog(vista, 
+                "Dirección inválida.\nSolo se permiten letras, números y puntos.", 
+                "Error de Validación", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        // 5. Validar Unicidad (Solo si es un registro nuevo)
+        if (esNuevo && modeloDAO.existeCedula(cedula)) {
+            JOptionPane.showMessageDialog(vista, "La cédula ya está registrada en el sistema.", "Error", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        // 6. Validar Teléfono Único (Se excluye la misma cédula en caso de estar editando)
+        if (modeloDAO.existeTelefono(telefono, esNuevo ? null : cedula)) {
+            JOptionPane.showMessageDialog(vista, "El número de teléfono ya pertenece a otro cliente.", "Error", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        return true;
     }
 }

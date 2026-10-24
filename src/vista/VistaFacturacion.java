@@ -4,6 +4,7 @@ import modelo.ConexionBD;
 import modelo.FacturaDAO;
 import modelo.ItemFactura;
 import modelo.FamiliarDAO;
+import modelo.InventarioDAO; // IMPORTANTE: Para obtener la tasa
 
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
@@ -24,6 +25,8 @@ import com.lowagie.text.pdf.PdfPCell;
 // -------------------------------------
 
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.sql.Connection;
@@ -38,25 +41,31 @@ import java.util.List;
 public class VistaFacturacion extends JFrame {
 
     private JTextField txtNumero, txtFecha, txtCedula, txtNombre, txtUbicacion, txtCodigoArt, txtCantidad;
-    private JComboBox<String> cmbCondPago, cmbStatus, cmbProveedor;
-    private JComboBox<String> cmbFallecido; 
+    private JComboBox<String> cmbProveedor, cmbFallecido; 
     
     private JTable tablaDetalle;
     private DefaultTableModel modeloTabla;
     private List<ItemFactura> listaItems;
     
-    private JLabel lblSubtotalVal, lblIvaVal, lblTotalVal;
+    private JLabel lblSubtotalVal, lblIvaVal, lblTotalVal, lblTotalBs;
     private JTextField txtPorcentajeIva;
 
     private double subtotalGeneral = 0.0;
     private double ivaGeneral = 0.0;
     private double totalGeneral = 0.0;
+    
+    // Variable para la tasa del BCV
+    private double tasaBcv = 0.0;
 
     public VistaFacturacion() {
         listaItems = new ArrayList<>();
         
+        // Obtenemos la tasa BCV de la base de datos al iniciar
+        double[] tasas = new InventarioDAO().obtenerTasas();
+        tasaBcv = tasas[0];
+
         setTitle("Pedidos / Facturación - Funeraria Mi Redentor");
-        setSize(1150, 700);
+        setSize(1150, 720); // Un poco más alto para que quepa el monto en Bs
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(5, 5));
@@ -93,34 +102,30 @@ public class VistaFacturacion extends JFrame {
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.anchor = GridBagConstraints.WEST;
 
+        // Fila 0: Número, Fecha, Proveedor
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0;
         panelDatos.add(new JLabel("Número:"), gbc);
-        gbc.gridx = 1; gbc.weightx = 0.1;
+        gbc.gridx = 1; gbc.weightx = 0.15;
         txtNumero = new JTextField(8); txtNumero.setEditable(false); txtNumero.setBackground(new Color(240, 240, 240));
         panelDatos.add(txtNumero, gbc);
 
         gbc.gridx = 2; gbc.weightx = 0;
-        panelDatos.add(new JLabel("Cond Pag:"), gbc);
-        gbc.gridx = 3; gbc.weightx = 0.15;
-        cmbCondPago = new JComboBox<>(new String[]{"01 - CONTADO", "02 - CREDITO"});
-        panelDatos.add(cmbCondPago, gbc);
-
-        gbc.gridx = 4; gbc.weightx = 0;
-        panelDatos.add(new JLabel("Status:"), gbc);
-        gbc.gridx = 5; gbc.weightx = 0.15;
-        cmbStatus = new JComboBox<>(new String[]{"Sin Procesar", "Procesada"});
-        cmbStatus.setEnabled(false);
-        panelDatos.add(cmbStatus, gbc);
-
-        gbc.gridx = 6; gbc.weightx = 0;
         panelDatos.add(new JLabel("Fecha:"), gbc);
-        gbc.gridx = 7; gbc.weightx = 0.1;
+        gbc.gridx = 3; gbc.weightx = 0.15;
         txtFecha = new JTextField(10); txtFecha.setEditable(false); txtFecha.setBackground(new Color(240, 240, 240));
         panelDatos.add(txtFecha, gbc);
 
+        gbc.gridx = 4; gbc.weightx = 0;
+        panelDatos.add(new JLabel("Proveedor:"), gbc);
+        gbc.gridx = 5; gbc.weightx = 0.3;
+        cmbProveedor = new JComboBox<>();
+        panelDatos.add(cmbProveedor, gbc);
+        cargarProveedoresEnCombo();
+
+        // Fila 1: Cliente
         gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0;
         panelDatos.add(new JLabel("Titular (Cédula):"), gbc);
-        gbc.gridx = 1; gbc.weightx = 0.1;
+        gbc.gridx = 1; gbc.weightx = 0.15;
         JPanel panelCli = new JPanel(new BorderLayout(2, 0));
         txtCedula = new JTextField("V-");
         JButton btnBuscar = new JButton("...");
@@ -132,18 +137,12 @@ public class VistaFacturacion extends JFrame {
 
         gbc.gridx = 2; gbc.weightx = 0;
         panelDatos.add(new JLabel("Nombre:"), gbc);
-        gbc.gridx = 3; gbc.gridwidth = 3; gbc.weightx = 0.4;
+        gbc.gridx = 3; gbc.gridwidth = 3; gbc.weightx = 0.85;
         txtNombre = new JTextField(); txtNombre.setEditable(false); txtNombre.setBackground(new Color(240, 240, 240));
         panelDatos.add(txtNombre, gbc);
 
-        gbc.gridx = 6; gbc.gridwidth = 1; gbc.weightx = 0;
-        panelDatos.add(new JLabel("Proveedor:"), gbc);
-        gbc.gridx = 7; gbc.weightx = 0.15;
-        cmbProveedor = new JComboBox<>();
-        panelDatos.add(cmbProveedor, gbc);
-        cargarProveedoresEnCombo();
-
-        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0;
+        // Fila 2: Fallecido y Ubicación
+        gbc.gridx = 0; gbc.gridy = 2; gbc.gridwidth = 1; gbc.weightx = 0;
         panelDatos.add(new JLabel("Fallecido:"), gbc);
         gbc.gridx = 1; gbc.gridwidth = 2; gbc.weightx = 0.2;
         cmbFallecido = new JComboBox<>();
@@ -152,7 +151,7 @@ public class VistaFacturacion extends JFrame {
 
         gbc.gridx = 3; gbc.gridwidth = 1; gbc.weightx = 0;
         panelDatos.add(new JLabel("Ubicación:"), gbc);
-        gbc.gridx = 4; gbc.gridwidth = 4; gbc.weightx = 0.6;
+        gbc.gridx = 4; gbc.gridwidth = 2; gbc.weightx = 0.8;
         txtUbicacion = new JTextField();
         panelDatos.add(txtUbicacion, gbc);
 
@@ -164,10 +163,18 @@ public class VistaFacturacion extends JFrame {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
+        // Barra de captura rápida
         JPanel panelCaptura = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         panelCaptura.add(new JLabel("Artículo (Código):"));
+        
         txtCodigoArt = new JTextField(10);
         panelCaptura.add(txtCodigoArt);
+        
+        JButton btnBuscarArt = new JButton("Buscar");
+        btnBuscarArt.setToolTipText("Buscar Artículo en el Inventario");
+        btnBuscarArt.setMargin(new Insets(0, 5, 0, 5));
+        btnBuscarArt.addActionListener(e -> abrirBuscadorInventario());
+        panelCaptura.add(btnBuscarArt);
         
         panelCaptura.add(new JLabel("Cant:"));
         txtCantidad = new JTextField("1.00", 5);
@@ -183,7 +190,8 @@ public class VistaFacturacion extends JFrame {
 
         panel.add(panelCaptura, BorderLayout.NORTH);
 
-        String[] columnas = {"Reng", "Artículo", "Almacén", "Cant.", "Unid", "Precio", "% Desc", "I.V.A.", "Neto", "Descripción"};
+        // Tabla de Detalle
+        String[] columnas = {"Reng", "Artículo", "Cant.", "Unid", "Precio", "% Desc", "I.V.A.", "Neto", "Descripción"};
         modeloTabla = new DefaultTableModel(columnas, 0) {
             @Override public boolean isCellEditable(int r, int c) { return false; }
         };
@@ -200,9 +208,9 @@ public class VistaFacturacion extends JFrame {
         rightRenderer.setHorizontalAlignment(JLabel.RIGHT);
         
         tablaDetalle.getColumnModel().getColumn(0).setCellRenderer(centerRenderer);
-        tablaDetalle.getColumnModel().getColumn(3).setCellRenderer(centerRenderer);
-        tablaDetalle.getColumnModel().getColumn(5).setCellRenderer(rightRenderer);
-        tablaDetalle.getColumnModel().getColumn(8).setCellRenderer(rightRenderer);
+        tablaDetalle.getColumnModel().getColumn(2).setCellRenderer(centerRenderer);
+        tablaDetalle.getColumnModel().getColumn(4).setCellRenderer(rightRenderer);
+        tablaDetalle.getColumnModel().getColumn(7).setCellRenderer(rightRenderer);
 
         JScrollPane scroll = new JScrollPane(tablaDetalle);
         scroll.setBorder(BorderFactory.createTitledBorder(
@@ -227,8 +235,12 @@ public class VistaFacturacion extends JFrame {
         JButton btnNuevo = new JButton("Nueva Factura");
         btnNuevo.addActionListener(e -> limpiarFormulario());
         
+        JButton btnVolver = new JButton("Volver al Menú");
+        btnVolver.addActionListener(e -> dispose());
+
         panelBotones.add(btnGuardar);
         panelBotones.add(btnNuevo);
+        panelBotones.add(btnVolver);
         
         panelPrincipal.add(panelBotones, BorderLayout.WEST);
 
@@ -249,7 +261,7 @@ public class VistaFacturacion extends JFrame {
         panelTotales.add(btnActIva, gbc);
 
         gbc.gridx = 0; gbc.gridy = 1; gbc.gridwidth = 2;
-        panelTotales.add(new JLabel("Subtotal:", JLabel.RIGHT), gbc);
+        panelTotales.add(new JLabel("Subtotal ($):", JLabel.RIGHT), gbc);
         gbc.gridx = 2; gbc.gridwidth = 1; gbc.weightx = 0.3;
         lblSubtotalVal = new JLabel("0.00", JLabel.RIGHT);
         lblSubtotalVal.setBorder(BorderFactory.createEtchedBorder());
@@ -258,7 +270,7 @@ public class VistaFacturacion extends JFrame {
         panelTotales.add(lblSubtotalVal, gbc);
 
         gbc.gridx = 0; gbc.gridy = 2; gbc.gridwidth = 2;
-        panelTotales.add(new JLabel("I.V.A.:", JLabel.RIGHT), gbc);
+        panelTotales.add(new JLabel("I.V.A. ($):", JLabel.RIGHT), gbc);
         gbc.gridx = 2; gbc.gridwidth = 1;
         lblIvaVal = new JLabel("0.00", JLabel.RIGHT);
         lblIvaVal.setBorder(BorderFactory.createEtchedBorder());
@@ -266,8 +278,9 @@ public class VistaFacturacion extends JFrame {
         lblIvaVal.setOpaque(true);
         panelTotales.add(lblIvaVal, gbc);
 
+        // Total en Dólares
         gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 2;
-        JLabel lblTotalTit = new JLabel("Total:", JLabel.RIGHT);
+        JLabel lblTotalTit = new JLabel("Total ($):", JLabel.RIGHT);
         lblTotalTit.setFont(new Font("Tahoma", Font.BOLD, 12));
         panelTotales.add(lblTotalTit, gbc);
         gbc.gridx = 2; gbc.gridwidth = 1;
@@ -277,9 +290,69 @@ public class VistaFacturacion extends JFrame {
         lblTotalVal.setBackground(new Color(240, 240, 240));
         lblTotalVal.setOpaque(true);
         panelTotales.add(lblTotalVal, gbc);
+        
+        // Total en Bolívares (NUEVO)
+        gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 2;
+        JLabel lblTotalBsTit = new JLabel("Total (Bs):", JLabel.RIGHT);
+        lblTotalBsTit.setFont(new Font("Tahoma", Font.BOLD, 12));
+        panelTotales.add(lblTotalBsTit, gbc);
+        
+        gbc.gridx = 2; gbc.gridwidth = 1;
+        lblTotalBs = new JLabel("0.00", JLabel.RIGHT);
+        lblTotalBs.setFont(new Font("Tahoma", Font.BOLD, 12));
+        lblTotalBs.setForeground(new Color(39, 174, 96)); // Color verde para resaltar
+        lblTotalBs.setBorder(BorderFactory.createEtchedBorder());
+        lblTotalBs.setBackground(new Color(230, 255, 230)); // Fondo verde suave
+        lblTotalBs.setOpaque(true);
+        panelTotales.add(lblTotalBs, gbc);
 
         panelPrincipal.add(panelTotales, BorderLayout.EAST);
         return panelPrincipal;
+    }
+
+    private void abrirBuscadorInventario() {
+        JDialog dialog = new JDialog(this, "Seleccionar Artículo del Inventario", true);
+        dialog.setSize(750, 400);
+        dialog.setLocationRelativeTo(this);
+        dialog.setLayout(new BorderLayout());
+
+        String[] cols = {"Código", "Descripción", "P. Compra ($)", "P. Venta ($)", "Stock"};
+        DefaultTableModel mod = new DefaultTableModel(cols, 0) {
+            @Override public boolean isCellEditable(int r, int c) { return false; }
+        };
+        JTable tbl = new JTable(mod);
+        
+        InventarioDAO dao = new InventarioDAO();
+        List<Object[]> lista = dao.obtenerInventario();
+        
+        for (Object[] fila : lista) {
+            Object[] filaCorregida = { fila[0], fila[1], fila[3], fila[4], fila[2] };
+            mod.addRow(filaCorregida);
+        }
+
+        JScrollPane scroll = new JScrollPane(tbl);
+        dialog.add(scroll, BorderLayout.CENTER);
+
+        tbl.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    int fila = tbl.getSelectedRow();
+                    if (fila != -1) {
+                        String codigo = mod.getValueAt(fila, 0).toString();
+                        txtCodigoArt.setText(codigo);
+                        dialog.dispose();
+                        agregarItem(); 
+                    }
+                }
+            }
+        });
+
+        JLabel lblInstruccion = new JLabel("Haz doble clic en un artículo para agregarlo a la factura.", JLabel.CENTER);
+        lblInstruccion.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
+        dialog.add(lblInstruccion, BorderLayout.SOUTH);
+
+        dialog.setVisible(true);
     }
 
     private void buscarCliente() {
@@ -332,7 +405,7 @@ public class VistaFacturacion extends JFrame {
 
         try {
             double cantidad = Double.parseDouble(cantStr);
-            String sql = "SELECT descripcion, precio, stock FROM inventario WHERE codigo = ?";
+            String sql = "SELECT descripcion, precio_venta, stock FROM inventario WHERE codigo = ?";
             
             try (Connection conn = ConexionBD.conectar();
                  PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -347,7 +420,12 @@ public class VistaFacturacion extends JFrame {
                     }
 
                     String desc = rs.getString("descripcion");
-                    double precio = rs.getDouble("precio");
+                    double precio = rs.getDouble("precio_venta"); 
+                    
+                    if (precio == 0) {
+                        JOptionPane.showMessageDialog(this, "Advertencia: El precio de venta es 0. Configúralo en el Inventario.", "Aviso", JOptionPane.WARNING_MESSAGE);
+                    }
+
                     double subtotalRenglon = cantidad * precio;
 
                     ItemFactura item = new ItemFactura(codigo, desc, (int) cantidad, precio);
@@ -355,7 +433,7 @@ public class VistaFacturacion extends JFrame {
 
                     int renglon = modeloTabla.getRowCount() + 1;
                     modeloTabla.addRow(new Object[]{
-                        renglon, codigo, "CCS", String.format("%.2f", cantidad), "UND", 
+                        renglon, codigo, String.format("%.2f", cantidad), "UND", 
                         String.format("%.2f", precio), "0.00", "1", 
                         String.format("%.2f", subtotalRenglon), desc
                     });
@@ -399,9 +477,15 @@ public class VistaFacturacion extends JFrame {
         ivaGeneral = subtotalGeneral * (ivaPct / 100.0);
         totalGeneral = subtotalGeneral + ivaGeneral;
 
+        // Calcular el total en Bolívares
+        double totalBs = totalGeneral * tasaBcv;
+
         lblSubtotalVal.setText(String.format("%,.2f", subtotalGeneral));
         lblIvaVal.setText(String.format("%,.2f", ivaGeneral));
         lblTotalVal.setText(String.format("%,.2f", totalGeneral));
+        
+        // Actualizar la etiqueta de Bolívares
+        lblTotalBs.setText(String.format("%,.2f Bs.", totalBs));
     }
 
     private void guardarFactura() {
@@ -424,18 +508,13 @@ public class VistaFacturacion extends JFrame {
 
         if (exito) {
             JOptionPane.showMessageDialog(this, "Factura guardada exitosamente en la Base de Datos.");
-            
             generarPDF(numFac, cedula, txtNombre.getText(), cmbFallecido.getSelectedItem().toString(), txtUbicacion.getText());
-            
             limpiarFormulario();
         } else {
             JOptionPane.showMessageDialog(this, "Error al guardar la factura en BD.", "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    // ==========================================
-    // MÉTODO PARA GENERAR PDF (CON DISEÑO ELEGANTE)
-    // ==========================================
     private void generarPDF(String numFactura, String cedula, String nombre, String fallecido, String ubicacion) {
         String nombreArchivo = "Factura_" + numFactura + ".pdf";
         
@@ -444,7 +523,6 @@ public class VistaFacturacion extends JFrame {
             PdfWriter.getInstance(documento, new FileOutputStream(nombreArchivo));
             documento.open();
 
-            // --- FUENTES Y COLORES ---
             com.lowagie.text.Font fontTitulo = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 16, new java.awt.Color(44, 62, 80));
             com.lowagie.text.Font fontSubtitulo = FontFactory.getFont(FontFactory.HELVETICA, 11, java.awt.Color.DARK_GRAY);
             com.lowagie.text.Font fontNegrita = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, java.awt.Color.BLACK);
@@ -452,14 +530,10 @@ public class VistaFacturacion extends JFrame {
             
             java.awt.Color colorCabeceraTabla = new java.awt.Color(44, 62, 80);
 
-            // ==========================================
-            // 1. ENCABEZADO (Logo + Datos de la Empresa)
-            // ==========================================
             PdfPTable tablaHeader = new PdfPTable(2);
             tablaHeader.setWidthPercentage(100);
             tablaHeader.setWidths(new float[]{30f, 70f}); 
 
-            // Celda Izquierda: El Logo
             PdfPCell celdaLogo = new PdfPCell();
             celdaLogo.setBorder(Rectangle.NO_BORDER);
             try {
@@ -471,7 +545,6 @@ public class VistaFacturacion extends JFrame {
             }
             tablaHeader.addCell(celdaLogo);
 
-            // Celda Derecha: Datos de la empresa y contacto
             PdfPCell celdaDatos = new PdfPCell();
             celdaDatos.setBorder(Rectangle.NO_BORDER);
             celdaDatos.setHorizontalAlignment(Element.ALIGN_RIGHT);
@@ -489,16 +562,12 @@ public class VistaFacturacion extends JFrame {
 
             documento.add(tablaHeader);
             
-            // Línea separadora
             documento.add(new Paragraph(" "));
             Paragraph linea = new Paragraph("__________________________________________________________________________________", fontSubtitulo);
             linea.setAlignment(Element.ALIGN_CENTER);
             documento.add(linea);
             documento.add(new Paragraph(" "));
 
-            // ==========================================
-            // 2. DATOS DE LA FACTURA
-            // ==========================================
             PdfPTable tablaDatos = new PdfPTable(2);
             tablaDatos.setWidthPercentage(100);
             tablaDatos.getDefaultCell().setBorder(Rectangle.NO_BORDER);
@@ -514,14 +583,10 @@ public class VistaFacturacion extends JFrame {
             documento.add(new Paragraph(" "));
             documento.add(new Paragraph(" "));
 
-            // ==========================================
-            // 3. TABLA DE PRODUCTOS (Elegante)
-            // ==========================================
             PdfPTable tabla = new PdfPTable(4); 
             tabla.setWidthPercentage(100);
             tabla.setWidths(new float[]{15f, 45f, 20f, 20f}); 
 
-            // Cabeceras con fondo oscuro y letra blanca
             PdfPCell cCant = new PdfPCell(new Phrase("CANT.", fontBlanca));
             cCant.setBackgroundColor(colorCabeceraTabla);
             cCant.setHorizontalAlignment(Element.ALIGN_CENTER);
@@ -546,7 +611,6 @@ public class VistaFacturacion extends JFrame {
             cSub.setPadding(8);
             tabla.addCell(cSub);
 
-            // Filas de la tabla
             for (ItemFactura item : listaItems) {
                 PdfPCell cell;
                 
@@ -573,21 +637,16 @@ public class VistaFacturacion extends JFrame {
             documento.add(tabla);
             documento.add(new Paragraph(" "));
 
-            // ==========================================
-            // 4. TOTALES Y FIRMA
-            // ==========================================
             PdfPTable tablaFinal = new PdfPTable(2);
             tablaFinal.setWidthPercentage(100);
             tablaFinal.getDefaultCell().setBorder(Rectangle.NO_BORDER);
 
-            // Lado Izquierdo: Espacio para la firma
             PdfPCell celdaFirma = new PdfPCell();
             celdaFirma.setBorder(Rectangle.NO_BORDER);
             celdaFirma.addElement(new Paragraph("\n\n\n\n_____________________________________", fontSubtitulo));
             celdaFirma.addElement(new Paragraph("Firma del Titular / Responsable", fontSubtitulo));
             tablaFinal.addCell(celdaFirma);
 
-            // Lado Derecho: Totales
             PdfPCell celdaTotales = new PdfPCell();
             celdaTotales.setBorder(Rectangle.NO_BORDER);
             
@@ -602,7 +661,7 @@ public class VistaFacturacion extends JFrame {
             tablaTotales.addCell(new Paragraph("IVA (16%):", fontNegrita));
             tablaTotales.addCell(new Paragraph(String.format("$%.2f", ivaGeneral), fontNegrita));
             
-            PdfPCell cellTotalTit = new PdfPCell(new Paragraph("TOTAL:", fontTitulo));
+            PdfPCell cellTotalTit = new PdfPCell(new Paragraph("TOTAL ($):", fontTitulo));
             cellTotalTit.setBorder(Rectangle.TOP);
             cellTotalTit.setBorderColor(colorCabeceraTabla);
             tablaTotales.addCell(cellTotalTit);
@@ -641,9 +700,7 @@ public class VistaFacturacion extends JFrame {
     }
 
     private void generarNuevaFactura() {
-        // Usamos el método que consulta la base de datos para el número correlativo
         txtNumero.setText(obtenerSiguienteNumeroFactura());
-        
         txtFecha.setText(LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
         txtCedula.setText("V-");
         txtNombre.setText("");
@@ -660,7 +717,10 @@ public class VistaFacturacion extends JFrame {
     }
 
     private void limpiarFormulario() {
-        // Ya no usamos 'contadorFactura++', el método generarNuevaFactura se encarga de buscar el siguiente número en la BD.
+        // Refrescamos la tasa BCV por si se cambió en el inventario recientemente
+        double[] tasas = new InventarioDAO().obtenerTasas();
+        tasaBcv = tasas[0];
+
         generarNuevaFactura();
     }
 
@@ -674,12 +734,8 @@ public class VistaFacturacion extends JFrame {
         }
     }
 
-    // ==========================================
-    // MÉTODO NUEVO PARA OBTENER EL CORRELATIVO
-    // ==========================================
     private String obtenerSiguienteNumeroFactura() {
         String siguienteNumero = "0001";
-        // Extrae la parte numérica del número de factura (ej. de "FAC-0005" saca 5) y busca el máximo
         String sql = "SELECT MAX(CAST(SUBSTR(numero_factura, 5) AS INTEGER)) AS max_num FROM facturas";
         
         try (Connection conn = ConexionBD.conectar();
@@ -688,7 +744,6 @@ public class VistaFacturacion extends JFrame {
             
             if (rs.next()) {
                 int maxNum = rs.getInt("max_num");
-                // Si la tabla está vacía, maxNum será 0, entonces usamos 1.
                 int nuevoNum = (maxNum == 0) ? 1 : maxNum + 1;
                 siguienteNumero = String.format("%04d", nuevoNum);
             }

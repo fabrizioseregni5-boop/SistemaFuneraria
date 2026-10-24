@@ -114,4 +114,22 @@ public class FamiliarDAO {
             return false;
         }
     }
+    // Verifica si la cédula del familiar ya existe (excluyendo el ID actual si se está editando)
+    public boolean existeCedulaFamiliar(String cedulaFamiliar, int idExcluir) {
+        if (cedulaFamiliar == null || cedulaFamiliar.trim().isEmpty()) return false;
+        
+        String sql = "SELECT COUNT(*) FROM familiares WHERE cedula_familiar = ? AND id != ?";
+        try (Connection conn = ConexionBD.conectar();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, cedulaFamiliar.trim());
+            pstmt.setInt(2, idExcluir);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) return rs.getInt(1) > 0;
+            }
+        } catch (SQLException e) {
+            System.err.println("Error al verificar cédula familiar: " + e.getMessage());
+        }
+        return false;
+    }
 }
+

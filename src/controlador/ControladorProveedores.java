@@ -48,10 +48,8 @@ public class ControladorProveedores implements ActionListener {
     }
 
     private void guardar() {
-        if (camposVacios()) {
-            JOptionPane.showMessageDialog(vista, "RIF y Nombre son obligatorios.", "Advertencia", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
+        if (!validarCampos()) return; // Si la validación falla, se detiene aquí
+
         boolean exito = modeloDAO.insertarProveedor(
                 vista.getTxtRif().getText().trim(),
                 vista.getTxtNombre().getText().trim(),
@@ -69,10 +67,13 @@ public class ControladorProveedores implements ActionListener {
 
     private void editar() {
         String rif = vista.getTxtRif().getText().trim();
-        if (rif.isEmpty() || camposVacios()) {
-            JOptionPane.showMessageDialog(vista, "Seleccione un proveedor y llene los campos.", "Advertencia", JOptionPane.WARNING_MESSAGE);
+        if (rif.isEmpty()) {
+            JOptionPane.showMessageDialog(vista, "Seleccione un proveedor de la tabla.", "Advertencia", JOptionPane.WARNING_MESSAGE);
             return;
         }
+        
+        if (!validarCampos()) return; // Si la validación falla, se detiene aquí
+
         boolean exito = modeloDAO.actualizarProveedor(
                 rif,
                 vista.getTxtNombre().getText().trim(),
@@ -111,7 +112,7 @@ public class ControladorProveedores implements ActionListener {
         if (fila != -1) {
             int filaModelo = vista.getTablaProveedores().convertRowIndexToModel(fila);
             vista.getTxtRif().setText(vista.getModeloTabla().getValueAt(filaModelo, 0).toString());
-            vista.getTxtRif().setEnabled(false);
+            vista.getTxtRif().setEnabled(false); // Bloquear RIF al editar
             vista.getTxtNombre().setText(vista.getModeloTabla().getValueAt(filaModelo, 1).toString());
             vista.getTxtTelefono().setText(vista.getModeloTabla().getValueAt(filaModelo, 2).toString());
             vista.getTxtDireccion().setText(vista.getModeloTabla().getValueAt(filaModelo, 3).toString());
@@ -127,7 +128,53 @@ public class ControladorProveedores implements ActionListener {
         }
     }
 
-    private boolean camposVacios() {
-        return vista.getTxtRif().getText().trim().isEmpty() || vista.getTxtNombre().getText().trim().isEmpty();
+    // ==========================================
+    // MÉTODO DE VALIDACIÓN CON EXPRESIONES REGULARES
+    // ==========================================
+    private boolean validarCampos() {
+        String rif = vista.getTxtRif().getText().trim();
+        String nombre = vista.getTxtNombre().getText().trim();
+        String telefono = vista.getTxtTelefono().getText().trim();
+        String direccion = vista.getTxtDireccion().getText().trim();
+
+        // 1. Validar RIF: Letra, guion, 8 números, guion, 1 número (Ej: J-12345678-0)
+        if (!rif.matches("^[A-Za-z]-\\d{8}-\\d{1}$")) {
+            JOptionPane.showMessageDialog(vista, 
+                "Formato de RIF inválido.\nDebe tener el formato: J-12345678-0\n(Sin espacios)", 
+                "Error de Validación", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        // 2. Validar Nombre: Letras, números y puntos (Ej: Funeraria Mi Redentor C.A.)
+        if (!nombre.matches("^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ.\\s]+$")) {
+            JOptionPane.showMessageDialog(vista, 
+                "Nombre / Empresa inválido.\nSolo se permiten letras, números y puntos.", 
+                "Error de Validación", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        // 3. Validar Teléfono: Solo números
+        if (!telefono.matches("^\\d+$")) {
+            JOptionPane.showMessageDialog(vista, 
+                "Teléfono inválido.\nSolo se permiten números (sin guiones ni espacios).", 
+                "Error de Validación", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        // 4. Validar Dirección: Letras, números y puntos
+        if (!direccion.matches("^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ.\\s]+$")) {
+            JOptionPane.showMessageDialog(vista, 
+                "Dirección inválida.\nSolo se permiten letras, números y puntos.", 
+                "Error de Validación", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        // Validar que no haya campos vacíos obligatorios
+        if (nombre.isEmpty()) {
+            JOptionPane.showMessageDialog(vista, "El nombre es obligatorio.", "Advertencia", JOptionPane.WARNING_MESSAGE);
+            return false;
+        }
+
+        return true;
     }
 }

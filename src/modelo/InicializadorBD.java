@@ -7,7 +7,7 @@ import java.sql.SQLException;
 public class InicializadorBD {
 
     public static void crearTablas() {
-        // Sentencia SQL para la tabla de Clientes
+        // 1. Tabla de Clientes
         String sqlClientes = "CREATE TABLE IF NOT EXISTS clientes ("
                 + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
                 + "cedula TEXT NOT NULL UNIQUE, "
@@ -17,17 +17,24 @@ public class InicializadorBD {
                 + "correo TEXT"
                 + ");";
 
-        // Sentencia SQL para la tabla de Inventario
+        // 2. Tabla de Inventario (CON PRECIO DE VENTA)
         String sqlInventario = "CREATE TABLE IF NOT EXISTS inventario ("
                 + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
                 + "codigo TEXT NOT NULL UNIQUE, "
                 + "descripcion TEXT NOT NULL, "
                 + "categoria TEXT, "
                 + "stock INTEGER NOT NULL, "
-                + "precio REAL NOT NULL"
+                + "precio REAL NOT NULL, "
+                + "precio_venta REAL NOT NULL DEFAULT 0.0"
                 + ");";
 
-        // Sentencia SQL para la tabla de Familiares
+        // 3. Tabla de Configuración (PARA LAS TASAS)
+        String sqlConfiguracion = "CREATE TABLE IF NOT EXISTS configuracion ("
+                + "clave TEXT PRIMARY KEY, "
+                + "valor REAL NOT NULL"
+                + ");";
+
+        // 4. Tabla de Familiares
         String sqlFamiliares = "CREATE TABLE IF NOT EXISTS familiares ("
                 + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
                 + "cedula_titular TEXT NOT NULL, "
@@ -39,7 +46,7 @@ public class InicializadorBD {
                 + "FOREIGN KEY (cedula_titular) REFERENCES clientes(cedula) ON DELETE CASCADE"
                 + ");";
         
-        // NUEVA: Sentencia SQL para la tabla de Proveedores
+        // 5. Tabla de Proveedores
         String sqlProveedores = "CREATE TABLE IF NOT EXISTS proveedores ("
                 + "rif TEXT PRIMARY KEY NOT NULL, "
                 + "nombre TEXT NOT NULL, "
@@ -47,12 +54,12 @@ public class InicializadorBD {
                 + "direccion TEXT"
                 + ");";
 
-        // Sentencia SQL para la tabla de Facturas
+        // 6. Tabla de Facturas
         String sqlFacturas = "CREATE TABLE IF NOT EXISTS facturas ("
                 + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
                 + "numero_factura TEXT NOT NULL UNIQUE, "
                 + "cedula_cliente TEXT NOT NULL, "
-                + "proveedor TEXT DEFAULT 'Particular', " // Columna agregada aquí
+                + "proveedor TEXT DEFAULT 'Particular', " 
                 + "fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
                 + "subtotal REAL NOT NULL, "
                 + "iva REAL NOT NULL, "
@@ -60,7 +67,7 @@ public class InicializadorBD {
                 + "FOREIGN KEY (cedula_cliente) REFERENCES clientes(cedula) ON DELETE CASCADE"
                 + ");";
 
-        // Sentencia SQL para el Detalle de Facturas
+        // 7. Tabla de Detalle de Facturas
         String sqlDetalleFactura = "CREATE TABLE IF NOT EXISTS detalles_factura ("
                 + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
                 + "numero_factura TEXT NOT NULL, "
@@ -72,51 +79,95 @@ public class InicializadorBD {
                 + "FOREIGN KEY (codigo_producto) REFERENCES inventario(codigo)"
                 + ");";
         
+        // 8. Tabla de Usuarios con Roles y Nombre Completo
+        String sqlUsuarios = "CREATE TABLE IF NOT EXISTS usuarios ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "username TEXT UNIQUE NOT NULL, "
+                + "nombre_completo TEXT, "
+                + "password TEXT NOT NULL, "
+                + "rol_id INTEGER NOT NULL DEFAULT 3"
+                + ");";
+
+        // 9. Tabla de Cuentas (Por Cobrar y Pagar)
+        String sqlCuentas = "CREATE TABLE IF NOT EXISTS cuentas ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "tipo TEXT NOT NULL, " // 'COBRAR' o 'PAGAR'
+                + "referencia TEXT NOT NULL, " // Nro Factura o Nombre Proveedor
+                + "persona TEXT NOT NULL, " // Cliente o Proveedor
+                + "monto_total REAL NOT NULL, "
+                + "abonado REAL DEFAULT 0.0, "
+                + "saldo REAL NOT NULL, "
+                + "estado TEXT DEFAULT 'Pendiente', " // Pendiente o Pagada
+                + "fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                + ");";
+
+        // 10. Tabla de Logs (Historial de accesos)
+        String sqlLogs = "CREATE TABLE IF NOT EXISTS logs_acceso ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "username TEXT NOT NULL, "
+                + "fecha_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                + ");";
+        
         try (Connection conn = ConexionBD.conectar();
              Statement stmt = conn.createStatement()) {
             
-            // 1. Ejecutamos primero la creación de clientes (tabla principal)
+            // --- CREACIÓN DE TABLAS ---
             stmt.execute(sqlClientes);
             System.out.println("¡Tabla de 'clientes' creada o verificada con éxito!");
 
-            // 2. Luego la tabla de inventario
             stmt.execute(sqlInventario);
             System.out.println("¡Tabla de 'inventario' creada o verificada con éxito!");
 
-            // 3. La de familiares (que depende de clientes)
+            stmt.execute(sqlConfiguracion);
+            System.out.println("¡Tabla de 'configuracion' creada o verificada con éxito!");
+            
             stmt.execute(sqlFamiliares);
             System.out.println("¡Tabla de 'familiares' creada o verificada con éxito!");
 
-            // 4. La NUEVA tabla de Proveedores
             stmt.execute(sqlProveedores);
             System.out.println("¡Tabla de 'proveedores' creada o verificada con éxito!");
 
-            // 5. La de facturas (que depende de clientes)
             stmt.execute(sqlFacturas);
             System.out.println("¡Tabla de 'facturas' creada o verificada con éxito!");
 
-            // 6. Por último el detalle de facturas
             stmt.execute(sqlDetalleFactura);
             System.out.println("¡Tabla de 'detalles_factura' creada o verificada con éxito!");
 
-            // ==============================================================
-            // MIGRACIÓN: Arreglar la tabla facturas existente
-            // ==============================================================
-            // Si tu base de datos ya existía de antes, la tabla facturas no tiene
-            // la columna proveedor. Este bloque intenta agregarla.
-            // Si ya existe, dará un error que ignoraremos.
+            stmt.execute(sqlUsuarios);
+            System.out.println("¡Tabla de 'usuarios' creada o verificada con éxito!");
+
+            // ¡NUEVAS TABLAS AGREGADAS AQUÍ!
+            stmt.execute(sqlCuentas);
+            System.out.println("¡Tabla de 'cuentas' creada o verificada con éxito!");
+
+            stmt.execute(sqlLogs);
+            System.out.println("¡Tabla de 'logs_acceso' creada o verificada con éxito!");
+            
+            // --- MIGRACIONES (Para bases de datos antiguas) ---
+            try { 
+                stmt.execute("ALTER TABLE usuarios ADD COLUMN rol_id INTEGER NOT NULL DEFAULT 3"); 
+            } catch (SQLException e) { /* Ignorar si ya existe */ }
+            
+            try { 
+                stmt.execute("ALTER TABLE usuarios ADD COLUMN nombre_completo TEXT"); 
+            } catch (SQLException e) { /* Ignorar si ya existe */ }
+            
             try {
                 stmt.execute("ALTER TABLE facturas ADD COLUMN proveedor TEXT DEFAULT 'Particular'");
-                System.out.println("¡Columna 'proveedor' agregada a la tabla facturas!");
-            } catch (SQLException e) {
-                // Si el error dice que la columna ya existe, no hacemos nada.
-                if (!e.getMessage().contains("duplicate column name")) {
-                    System.out.println("Nota sobre migración: " + e.getMessage());
-                }
-            }
+            } catch (SQLException e) { /* Ignorar si ya existe */ }
+            
+            try { 
+                stmt.execute("ALTER TABLE inventario ADD COLUMN precio_venta REAL NOT NULL DEFAULT 0.0"); 
+            } catch (SQLException e) { /* Ignorar si ya existe */ }
+
+            // --- INSERCIÓN DE USUARIOS POR DEFECTO ---
+            stmt.execute("INSERT OR IGNORE INTO usuarios (username, nombre_completo, password, rol_id) VALUES ('master', 'Usuario Master', 'Master123!', 1)");
+            stmt.execute("INSERT OR IGNORE INTO usuarios (username, nombre_completo, password, rol_id) VALUES ('admin', 'Administrador', 'Admin123!', 2)");
+            stmt.execute("INSERT OR IGNORE INTO usuarios (username, nombre_completo, password, rol_id) VALUES ('user', 'Usuario Normal', 'User123!', 3)");
+            System.out.println("¡Usuarios por defecto (master, admin, user) verificados con éxito!");
 
         } catch (SQLException e) {
-            System.out.println("Error al crear las tablas: " + e.getMessage());
+            System.out.println("Error al crear o actualizar las tablas: " + e.getMessage());
         }
         
     }

@@ -20,18 +20,15 @@ public class ControladorInventario implements ActionListener {
         this.vista = vista;
         this.modeloDAO = new InventarioDAO();
 
-        // Asignar eventos a los botones
         this.vista.getBtnGuardar().addActionListener(this);
         this.vista.getBtnEditar().addActionListener(this);
         this.vista.getBtnEliminar().addActionListener(this);
         this.vista.getBtnLimpiar().addActionListener(this);
         this.vista.getBtnVolver().addActionListener(this);
         this.vista.getBtnBuscar().addActionListener(this);
-
-        // ¡NUEVO! Permite buscar presionando "Enter" en el campo de búsqueda
         this.vista.getTxtBuscar().addActionListener(this);
+        this.vista.getBtnGuardarTasa().addActionListener(this); // Nuevo botón
 
-        // Evento para cargar datos al hacer clic en una fila de la tabla
         this.vista.getTablaInventario().addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -39,7 +36,12 @@ public class ControladorInventario implements ActionListener {
             }
         });
 
-        // Cargar tabla al iniciar
+        // Cargar las tasas guardadas al abrir
+        double[] tasas = modeloDAO.obtenerTasas();
+        vista.getTxtTasaBcv().setText(String.format("%.2f", tasas[0]));
+        vista.getTxtTasaBinance().setText(String.format("%.2f", tasas[1]));
+        vista.bloquearTasas(true); // Bloquearlas por defecto
+
         cargarTabla("");
     }
 
@@ -53,103 +55,98 @@ public class ControladorInventario implements ActionListener {
             eliminarProducto();
         } else if (e.getSource() == vista.getBtnLimpiar()) {
             vista.limpiarCampos();
-            vista.getTablaInventario().clearSelection(); // Quitar selección de la tabla
+            vista.getTablaInventario().clearSelection();
             cargarTabla("");
         } else if (e.getSource() == vista.getBtnVolver()) {
             vista.dispose();
         } else if (e.getSource() == vista.getBtnBuscar() || e.getSource() == vista.getTxtBuscar()) {
-            // Si presiona el botón o presiona Enter en el campo de texto
             cargarTabla(vista.getTxtBuscar().getText().trim());
+        } else if (e.getSource() == vista.getBtnGuardarTasa()) {
+            guardarTasas();
+        }
+    }
+
+    private void guardarTasas() {
+        try {
+            double bcv = Double.parseDouble(vista.getTxtTasaBcv().getText().trim());
+            double binance = Double.parseDouble(vista.getTxtTasaBinance().getText().trim());
+            
+            if (bcv <= 0 || binance <= 0) {
+                JOptionPane.showMessageDialog(vista, "Las tasas deben ser mayores a 0.", "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            modeloDAO.guardarTasas(bcv, binance);
+            vista.bloquearTasas(true); // Volver a bloquear
+            JOptionPane.showMessageDialog(vista, "Tasas guardadas correctamente.", "Éxito", JOptionPane.INFORMATION_MESSAGE);
+
+        } catch (NumberFormatException ex) {
+            JOptionPane.showMessageDialog(vista, "Ingrese valores numéricos válidos para las tasas.", "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     private void guardarProducto() {
-        if (camposVacios()) {
-            JOptionPane.showMessageDialog(vista, "Todos los campos son obligatorios.", "Advertencia", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
+        if (!validarCampos(true)) return;
 
-        try {
-            String codigo = vista.getTxtCodigo().getText().trim();
-            String nombre = vista.getTxtNombre().getText().trim();
-            int cantidad = Integer.parseInt(vista.getTxtCantidad().getText().trim());
-            double precio = Double.parseDouble(vista.getTxtPrecio().getText().trim());
+        String codigo = vista.getTxtCodigo().getText().trim();
+        String nombre = vista.getTxtNombre().getText().trim();
+        int cantidad = Integer.parseInt(vista.getTxtCantidad().getText().trim());
+        double precioCompra = Double.parseDouble(vista.getTxtPrecioCompra().getText().trim());
+        double precioVenta = Double.parseDouble(vista.getTxtPrecioVenta().getText().trim());
 
-            // Validación extra: Cantidades y precios negativos
-            if (cantidad < 0 || precio < 0) {
-                JOptionPane.showMessageDialog(vista, "La cantidad y el precio no pueden ser negativos.", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-
-            boolean exito = modeloDAO.insertarProducto(codigo, nombre, cantidad, precio);
-            if (exito) {
-                JOptionPane.showMessageDialog(vista, "¡Producto registrado con éxito!", "Éxito", JOptionPane.INFORMATION_MESSAGE);
-                vista.limpiarCampos();
-                cargarTabla("");
-            } else {
-                JOptionPane.showMessageDialog(vista, "Error al registrar. ¿El código ya existe?", "Error", JOptionPane.ERROR_MESSAGE);
-            }
-        } catch (NumberFormatException ex) {
-            JOptionPane.showMessageDialog(vista, "La cantidad debe ser un número entero y el precio un número decimal.", "Error de Formato", JOptionPane.ERROR_MESSAGE);
+        boolean exito = modeloDAO.insertarProducto(codigo, nombre, cantidad, precioCompra, precioVenta);
+        if (exito) {
+            JOptionPane.showMessageDialog(vista, "¡Producto registrado con éxito!", "Éxito", JOptionPane.INFORMATION_MESSAGE);
+            vista.limpiarCampos();
+            cargarTabla("");
+        } else {
+            JOptionPane.showMessageDialog(vista, "Error al registrar. ¿El código ya existe?", "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     private void editarProducto() {
         String codigo = vista.getTxtCodigo().getText().trim();
-        
         if (codigo.isEmpty()) {
             JOptionPane.showMessageDialog(vista, "Seleccione un producto de la tabla para editar.", "Advertencia", JOptionPane.WARNING_MESSAGE);
             return;
         }
         
-        if (camposVacios()) {
-            JOptionPane.showMessageDialog(vista, "No puede dejar campos vacíos.", "Advertencia", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
+        if (!validarCampos(false)) return;
 
-        try {
-            String nombre = vista.getTxtNombre().getText().trim();
-            int cantidad = Integer.parseInt(vista.getTxtCantidad().getText().trim());
-            double precio = Double.parseDouble(vista.getTxtPrecio().getText().trim());
+        String nombre = vista.getTxtNombre().getText().trim();
+        int cantidad = Integer.parseInt(vista.getTxtCantidad().getText().trim());
+        double precioCompra = Double.parseDouble(vista.getTxtPrecioCompra().getText().trim());
+        double precioVenta = Double.parseDouble(vista.getTxtPrecioVenta().getText().trim());
 
-            if (cantidad < 0 || precio < 0) {
-                JOptionPane.showMessageDialog(vista, "La cantidad y el precio no pueden ser negativos.", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-
-            boolean exito = modeloDAO.actualizarProducto(codigo, nombre, cantidad, precio);
-            if (exito) {
-                JOptionPane.showMessageDialog(vista, "¡Producto actualizado con éxito!", "Éxito", JOptionPane.INFORMATION_MESSAGE);
-                vista.limpiarCampos();
-                vista.getTablaInventario().clearSelection();
-                cargarTabla("");
-            } else {
-                JOptionPane.showMessageDialog(vista, "No se pudo actualizar el registro.", "Error", JOptionPane.ERROR_MESSAGE);
-            }
-        } catch (NumberFormatException ex) {
-            JOptionPane.showMessageDialog(vista, "Verifique los formatos numéricos de Cantidad y Precio.", "Error de Formato", JOptionPane.ERROR_MESSAGE);
+        boolean exito = modeloDAO.actualizarProducto(codigo, nombre, cantidad, precioCompra, precioVenta);
+        if (exito) {
+            JOptionPane.showMessageDialog(vista, "¡Producto actualizado!", "Éxito", JOptionPane.INFORMATION_MESSAGE);
+            vista.limpiarCampos();
+            vista.getTablaInventario().clearSelection();
+            cargarTabla("");
+        } else {
+            JOptionPane.showMessageDialog(vista, "No se pudo actualizar el registro.", "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     private void eliminarProducto() {
-        String codigo = vista.getTxtCodigo().getText().trim();
-        if (codigo.isEmpty()) {
+        int fila = vista.getTablaInventario().getSelectedRow();
+        if (fila == -1) {
             JOptionPane.showMessageDialog(vista, "Seleccione un producto de la tabla para eliminar.", "Advertencia", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
-        int confirmar = JOptionPane.showConfirmDialog(vista, 
-                "¿Está seguro que desea eliminar el producto con código " + codigo + "?", 
-                "Confirmar Eliminación", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
-        
+        int filaModelo = vista.getTablaInventario().convertRowIndexToModel(fila);
+        String codigo = vista.getModeloTabla().getValueAt(filaModelo, 0).toString();
+
+        int confirmar = JOptionPane.showConfirmDialog(vista, "¿Eliminar producto " + codigo + "?", "Confirmar", JOptionPane.YES_NO_OPTION);
         if (confirmar == JOptionPane.YES_OPTION) {
             if (modeloDAO.eliminarProducto(codigo)) {
                 JOptionPane.showMessageDialog(vista, "¡Producto eliminado!", "Éxito", JOptionPane.INFORMATION_MESSAGE);
                 vista.limpiarCampos();
                 cargarTabla("");
             } else {
-                // Aquí podrías tener un problema si el producto ya está en una factura (Foreign Key)
-                JOptionPane.showMessageDialog(vista, "Error al eliminar. Es posible que el producto esté en uso en una factura.", "Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(vista, "Error al eliminar. Es posible que esté en uso en una factura.", "Error", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
@@ -157,32 +154,70 @@ public class ControladorInventario implements ActionListener {
     private void cargarDatosEnFormulario() {
         int fila = vista.getTablaInventario().getSelectedRow();
         if (fila != -1) {
-            // Convertir el índice de la vista al índice del modelo (por si ordenas la tabla luego)
             int filaModelo = vista.getTablaInventario().convertRowIndexToModel(fila);
-            
             vista.getTxtCodigo().setText(vista.getModeloTabla().getValueAt(filaModelo, 0).toString());
-            vista.getTxtCodigo().setEnabled(false); // Bloquea el código porque es la PK
+            vista.getTxtCodigo().setEnabled(false);
             vista.getTxtNombre().setText(vista.getModeloTabla().getValueAt(filaModelo, 1).toString());
             vista.getTxtCantidad().setText(vista.getModeloTabla().getValueAt(filaModelo, 2).toString());
-            vista.getTxtPrecio().setText(vista.getModeloTabla().getValueAt(filaModelo, 3).toString());
+            vista.getTxtPrecioCompra().setText(vista.getModeloTabla().getValueAt(filaModelo, 3).toString());
+            vista.getTxtPrecioVenta().setText(vista.getModeloTabla().getValueAt(filaModelo, 4).toString());
         }
     }
 
     private void cargarTabla(String filtro) {
         DefaultTableModel modelo = vista.getModeloTabla();
-        modelo.setRowCount(0); // Limpiar tabla
-
+        modelo.setRowCount(0);
         List<Object[]> lista = filtro.isEmpty() ? modeloDAO.obtenerInventario() : modeloDAO.buscarProductos(filtro);
         for (Object[] fila : lista) {
             modelo.addRow(fila);
         }
     }
-    
-    // Método auxiliar para no repetir la validación de campos vacíos
-    private boolean camposVacios() {
-        return vista.getTxtCodigo().getText().trim().isEmpty() ||
-               vista.getTxtNombre().getText().trim().isEmpty() ||
-               vista.getTxtCantidad().getText().trim().isEmpty() ||
-               vista.getTxtPrecio().getText().trim().isEmpty();
+
+    private boolean validarCampos(boolean esNuevo) {
+        String codigo = vista.getTxtCodigo().getText().trim();
+        String nombre = vista.getTxtNombre().getText().trim();
+        String cantStr = vista.getTxtCantidad().getText().trim();
+        String precCompraStr = vista.getTxtPrecioCompra().getText().trim();
+        String precVentaStr = vista.getTxtPrecioVenta().getText().trim();
+
+        if (codigo.isEmpty() || nombre.isEmpty() || cantStr.isEmpty() || precCompraStr.isEmpty() || precVentaStr.isEmpty()) {
+            JOptionPane.showMessageDialog(vista, "Todos los campos son obligatorios.", "Advertencia", JOptionPane.WARNING_MESSAGE);
+            return false;
+        }
+
+        if (!codigo.matches("^[a-zA-Z0-9-]+$")) {
+            JOptionPane.showMessageDialog(vista, "El Código solo puede contener letras, números y guiones.", "Error", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        if (nombre.length() > 25 || !nombre.matches("^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\\s]+$")) {
+            JOptionPane.showMessageDialog(vista, "Nombre inválido (Máx 25 carácteres, sin símbolos).", "Error", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        try {
+            int cantidad = Integer.parseInt(cantStr);
+            double precioCompra = Double.parseDouble(precCompraStr);
+            double precioVenta = Double.parseDouble(precVentaStr);
+
+            if (cantidad < 1) {
+                JOptionPane.showMessageDialog(vista, "La Cantidad debe ser mayor o igual a 1.", "Error", JOptionPane.ERROR_MESSAGE);
+                return false;
+            }
+            if (precioCompra <= 0 || precioVenta <= 0) {
+                JOptionPane.showMessageDialog(vista, "Los precios deben ser mayores a 0.", "Error", JOptionPane.ERROR_MESSAGE);
+                return false;
+            }
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(vista, "Valores numéricos inválidos.", "Error", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        if (esNuevo && modeloDAO.existeCodigo(codigo)) {
+            JOptionPane.showMessageDialog(vista, "El código de producto ya está registrado.", "Error", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        return true;
     }
 }

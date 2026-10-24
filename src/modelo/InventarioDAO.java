@@ -1,128 +1,128 @@
 package modelo;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
 public class InventarioDAO {
 
-    /**
-     * Inserta un nuevo producto en el inventario.
-     */
-    public boolean insertarProducto(String codigo, String descripcion, int stock, double precio) {
-        String sql = "INSERT INTO inventario (codigo, descripcion, stock, precio) VALUES (?, ?, ?, ?)";
-        
+    public boolean insertarProducto(String codigo, String descripcion, int stock, double precioCompra, double precioVenta) {
+        String sql = "INSERT INTO inventario (codigo, descripcion, stock, precio, precio_venta) VALUES (?, ?, ?, ?, ?)";
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            
             pstmt.setString(1, codigo);
             pstmt.setString(2, descripcion);
             pstmt.setInt(3, stock);
-            pstmt.setDouble(4, precio);
-            
+            pstmt.setDouble(4, precioCompra);
+            pstmt.setDouble(5, precioVenta);
             return pstmt.executeUpdate() > 0;
-            
         } catch (SQLException e) {
             System.err.println("❌ Error al insertar producto: " + e.getMessage());
             return false;
         }
     }
 
-    /**
-     * Obtiene todos los productos del inventario.
-     */
     public List<Object[]> obtenerInventario() {
         List<Object[]> lista = new ArrayList<>();
-        String sql = "SELECT codigo, descripcion, stock, precio FROM inventario";
-
-        // MEJORA: Usamos PreparedStatement para mantener consistencia
+        String sql = "SELECT codigo, descripcion, stock, precio, precio_venta FROM inventario";
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement pstmt = conn.prepareStatement(sql);
              ResultSet rs = pstmt.executeQuery()) {
-
             lista = mapearResultSet(rs);
-
         } catch (SQLException e) {
             System.err.println("❌ Error al obtener inventario: " + e.getMessage());
         }
         return lista;
     }
 
-    /**
-     * Actualiza los datos de un producto existente.
-     */
-    public boolean actualizarProducto(String codigo, String descripcion, int stock, double precio) {
-        String sql = "UPDATE inventario SET descripcion = ?, stock = ?, precio = ? WHERE codigo = ?";
-        
+    public boolean actualizarProducto(String codigo, String descripcion, int stock, double precioCompra, double precioVenta) {
+        String sql = "UPDATE inventario SET descripcion = ?, stock = ?, precio = ?, precio_venta = ? WHERE codigo = ?";
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            
             pstmt.setString(1, descripcion);
             pstmt.setInt(2, stock);
-            pstmt.setDouble(3, precio);
-            pstmt.setString(4, codigo);
-            
+            pstmt.setDouble(3, precioCompra);
+            pstmt.setDouble(4, precioVenta);
+            pstmt.setString(5, codigo);
             return pstmt.executeUpdate() > 0;
-            
         } catch (SQLException e) {
             System.err.println("❌ Error al actualizar producto: " + e.getMessage());
             return false;
         }
     }
 
-    /**
-     * Elimina un producto por su código.
-     */
     public boolean eliminarProducto(String codigo) {
         String sql = "DELETE FROM inventario WHERE codigo = ?";
-        
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            
             pstmt.setString(1, codigo);
             return pstmt.executeUpdate() > 0;
-            
         } catch (SQLException e) {
-            // Si el producto está en una factura, la BD lanzará un error de Foreign Key aquí
-            System.err.println("❌ Error al eliminar producto (Posible llave foránea en uso): " + e.getMessage());
+            System.err.println("❌ Error al eliminar producto: " + e.getMessage());
             return false;
         }
     }
 
-    /**
-     * Busca productos por código o descripción.
-     */
     public List<Object[]> buscarProductos(String filtro) {
         List<Object[]> lista = new ArrayList<>();
-        String sql = "SELECT codigo, descripcion, stock, precio FROM inventario WHERE codigo LIKE ? OR descripcion LIKE ?";
-
+        String sql = "SELECT codigo, descripcion, stock, precio, precio_venta FROM inventario WHERE codigo LIKE ? OR descripcion LIKE ?";
         try (Connection conn = ConexionBD.conectar();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            
             String param = "%" + filtro + "%";
             pstmt.setString(1, param);
             pstmt.setString(2, param);
-            
-            // MEJORA: Aseguramos el cierre del ResultSet con try-with-resources
             try (ResultSet rs = pstmt.executeQuery()) {
                 lista = mapearResultSet(rs);
             }
-            
         } catch (SQLException e) {
             System.err.println("❌ Error al buscar productos: " + e.getMessage());
         }
         return lista;
     }
 
+    public boolean existeCodigo(String codigo) {
+        String sql = "SELECT COUNT(*) FROM inventario WHERE codigo = ?";
+        try (Connection conn = ConexionBD.conectar();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, codigo);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) return rs.getInt(1) > 0;
+            }
+        } catch (SQLException e) { System.err.println(e.getMessage()); }
+        return false;
+    }
+
     // ==========================================
-    // MÉTODO AUXILIAR (DRY - Don't Repeat Yourself)
+    // MÉTODOS PARA GUARDAR LAS TASAS
     // ==========================================
-    /**
-     * Convierte un ResultSet en una lista de arreglos de objetos.
-     */
+    public void guardarTasas(double bcv, double binance) {
+        String sql = "INSERT OR REPLACE INTO configuracion (clave, valor) VALUES ('tasa_bcv', ?), ('tasa_binance', ?)";
+        try (Connection conn = ConexionBD.conectar();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setDouble(1, bcv);
+            pstmt.setDouble(2, binance);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            System.err.println("❌ Error al guardar tasas: " + e.getMessage());
+        }
+    }
+
+    public double[] obtenerTasas() {
+        double[] tasas = {0.0, 0.0};
+        String sql = "SELECT clave, valor FROM configuracion WHERE clave IN ('tasa_bcv', 'tasa_binance')";
+        try (Connection conn = ConexionBD.conectar();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+            while (rs.next()) {
+                if (rs.getString("clave").equals("tasa_bcv")) tasas[0] = rs.getDouble("valor");
+                if (rs.getString("clave").equals("tasa_binance")) tasas[1] = rs.getDouble("valor");
+            }
+        } catch (SQLException e) {
+            System.err.println("❌ Error al obtener tasas: " + e.getMessage());
+        }
+        return tasas;
+    }
+
     private List<Object[]> mapearResultSet(ResultSet rs) throws SQLException {
         List<Object[]> lista = new ArrayList<>();
         while (rs.next()) {
@@ -130,7 +130,8 @@ public class InventarioDAO {
                 rs.getString("codigo"),
                 rs.getString("descripcion"),
                 rs.getInt("stock"),
-                rs.getDouble("precio")
+                rs.getDouble("precio"),
+                rs.getDouble("precio_venta")
             };
             lista.add(fila);
         }

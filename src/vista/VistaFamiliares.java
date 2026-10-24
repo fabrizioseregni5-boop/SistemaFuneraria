@@ -1,33 +1,41 @@
 package vista;
 
+import modelo.ConexionBD;
 import modelo.FamiliarDAO;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.JTableHeader;
+import javax.swing.text.AbstractDocument;
+import javax.swing.text.AttributeSet;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.DocumentFilter;
 import java.awt.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.List;
 
 public class VistaFamiliares extends JFrame {
 
-    // Paleta de colores unificada para todo el sistema
     private static final Color C_PRIMARY = new Color(44, 62, 80);
     private static final Color C_BG      = new Color(245, 246, 250);
-    private static final Color C_ACCENT  = new Color(39, 174, 96);  // Verde (Guardar)
-    private static final Color C_INFO    = new Color(41, 128, 185); // Azul (Editar)
-    private static final Color C_DANGER  = new Color(192, 57, 43);  // Rojo (Eliminar)
-    private static final Color C_MUTED   = new Color(127, 140, 141); // Gris
+    private static final Color C_ACCENT  = new Color(39, 174, 96);
+    private static final Color C_INFO    = new Color(41, 128, 185);
+    private static final Color C_DANGER  = new Color(192, 57, 43);
+    private static final Color C_MUTED   = new Color(127, 140, 141);
 
     private JTextField txtCedulaTitular, txtNombres, txtApellidos, txtParentesco, txtCedulaFamiliar, txtDireccion, txtBuscarFamiliar;
     private JTable tablaFamiliares;
     private DefaultTableModel modeloTabla;
     private FamiliarDAO familiarDAO;
-    private JButton btnGuardar, btnEditar, btnEliminar;
+    private JButton btnGuardar, btnEditar, btnEliminar, btnVolverClientes;
     private int idFamiliarSeleccionado = -1;
 
     public VistaFamiliares(String cedulaTitularPrevia) {
@@ -41,14 +49,13 @@ public class VistaFamiliares extends JFrame {
         setLayout(new BorderLayout());
         getContentPane().setBackground(C_BG);
 
-        // Fuente global
         Font fuenteGeneral = new Font("Segoe UI", Font.PLAIN, 13);
         UIManager.put("Label.font", fuenteGeneral);
         UIManager.put("TextField.font", fuenteGeneral);
         UIManager.put("Button.font", fuenteGeneral);
         UIManager.put("Table.font", fuenteGeneral);
 
-        // --- 1. HEADER (Barra Superior) ---
+        // --- 1. HEADER ---
         JPanel panelSuperior = new JPanel(new BorderLayout());
         panelSuperior.setBackground(C_PRIMARY);
         panelSuperior.setBorder(new EmptyBorder(15, 20, 15, 20));
@@ -58,20 +65,21 @@ public class VistaFamiliares extends JFrame {
         lblTitulo.setFont(new Font("Segoe UI", Font.BOLD, 18));
         panelSuperior.add(lblTitulo, BorderLayout.WEST);
 
-        // Mostrar la cédula del titular en el header de forma destacada
-        JLabel lblTitularActual = new JLabel("Titular: " + (cedulaTitularPrevia.isEmpty() ? "No asignado" : cedulaTitularPrevia));
+        // Obtener el nombre del titular
+        String nombreTitular = obtenerNombreTitular(cedulaTitularPrevia);
+        JLabel lblTitularActual = new JLabel("Titular: " + cedulaTitularPrevia + " - " + nombreTitular);
         lblTitularActual.setForeground(new Color(189, 195, 199));
         lblTitularActual.setFont(new Font("Segoe UI", Font.BOLD, 14));
         panelSuperior.add(lblTitularActual, BorderLayout.EAST);
 
         add(panelSuperior, BorderLayout.NORTH);
 
-        // --- 2. PANEL PRINCIPAL (Formulario + Tabla) ---
+        // --- 2. PANEL PRINCIPAL ---
         JPanel panelPrincipal = new JPanel(new BorderLayout(15, 15));
         panelPrincipal.setBackground(C_BG);
         panelPrincipal.setBorder(new EmptyBorder(20, 20, 20, 20));
 
-        // --- 2.1 Formulario de Registro / Edición ---
+        // --- 2.1 Formulario ---
         JPanel panelFormulario = new JPanel(new GridBagLayout());
         panelFormulario.setBackground(Color.WHITE);
         panelFormulario.setBorder(BorderFactory.createCompoundBorder(
@@ -85,7 +93,7 @@ public class VistaFamiliares extends JFrame {
         gbc.anchor = GridBagConstraints.WEST;
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
-        // Fila 0: Cédula Titular y Nombres
+        // Fila 0
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0;
         panelFormulario.add(new JLabel("Cédula del Titular:"), gbc);
         gbc.gridx = 1; gbc.weightx = 0.3;
@@ -99,26 +107,49 @@ public class VistaFamiliares extends JFrame {
         panelFormulario.add(new JLabel("Nombres:"), gbc);
         gbc.gridx = 3; gbc.weightx = 0.7;
         txtNombres = crearTextFieldEstilizado();
+        aplicarFiltroLetras(txtNombres);
         panelFormulario.add(txtNombres, gbc);
 
-        // Fila 1: Apellidos y Parentesco
+        // Fila 1
         gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0;
         panelFormulario.add(new JLabel("Apellidos:"), gbc);
         gbc.gridx = 1; gbc.weightx = 0.3;
         txtApellidos = crearTextFieldEstilizado();
+        aplicarFiltroLetras(txtApellidos);
         panelFormulario.add(txtApellidos, gbc);
 
         gbc.gridx = 2; gbc.weightx = 0;
         panelFormulario.add(new JLabel("Parentesco (Ej. Cónyuge):"), gbc);
         gbc.gridx = 3; gbc.weightx = 0.7;
         txtParentesco = crearTextFieldEstilizado();
+        aplicarFiltroLetras(txtParentesco);
         panelFormulario.add(txtParentesco, gbc);
 
-        // Fila 2: Cédula Familiar y Dirección
+        // Fila 2
         gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0;
         panelFormulario.add(new JLabel("Cédula del Familiar:"), gbc);
         gbc.gridx = 1; gbc.weightx = 0.3;
         txtCedulaFamiliar = crearTextFieldEstilizado();
+        
+        // CONFIGURACIÓN DE FILTRO PARA CÉDULA
+        txtCedulaFamiliar.setText("V-");
+        ((AbstractDocument) txtCedulaFamiliar.getDocument()).setDocumentFilter(new DocumentFilter() {
+            @Override
+            public void replace(FilterBypass fb, int offset, int length, String text, AttributeSet attrs) throws BadLocationException {
+                String currentText = fb.getDocument().getText(0, fb.getDocument().getLength());
+                String newText = currentText.substring(0, offset) + text + currentText.substring(offset + length);
+                if (newText.matches("^V-\\d{0,8}$")) {
+                    super.replace(fb, offset, length, text, attrs);
+                }
+            }
+            @Override
+            public void remove(FilterBypass fb, int offset, int length) throws BadLocationException {
+                if (offset >= 2) {
+                    super.remove(fb, offset, length);
+                }
+            }
+        });
+        
         panelFormulario.add(txtCedulaFamiliar, gbc);
 
         gbc.gridx = 2; gbc.weightx = 0;
@@ -127,7 +158,7 @@ public class VistaFamiliares extends JFrame {
         txtDireccion = crearTextFieldEstilizado();
         panelFormulario.add(txtDireccion, gbc);
 
-        // Fila 3: Botones de Acción (Guardar / Editar)
+        // Fila 3: Botones de Acción
         JPanel panelBotonesAccion = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
         panelBotonesAccion.setOpaque(false);
         
@@ -148,7 +179,6 @@ public class VistaFamiliares extends JFrame {
         JPanel panelTablaContenedor = new JPanel(new BorderLayout(0, 10));
         panelTablaContenedor.setOpaque(false);
 
-        // Panel de Filtro y Botón Eliminar
         JPanel panelHerramientas = new JPanel(new BorderLayout());
         panelHerramientas.setOpaque(false);
 
@@ -160,23 +190,28 @@ public class VistaFamiliares extends JFrame {
         panelFiltro.add(txtBuscarFamiliar);
         panelHerramientas.add(panelFiltro, BorderLayout.WEST);
 
+        // Botón Volver a Clientes y Eliminar
+        JPanel panelBotonesDer = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        panelBotonesDer.setOpaque(false);
+        
+        btnVolverClientes = crearBotonEstilizado("Volver a Clientes", C_MUTED, Color.WHITE);
         btnEliminar = crearBotonEstilizado("Eliminar Seleccionado", C_DANGER, Color.WHITE);
-        panelHerramientas.add(btnEliminar, BorderLayout.EAST);
+        
+        panelBotonesDer.add(btnVolverClientes);
+        panelBotonesDer.add(btnEliminar);
+        
+        panelHerramientas.add(panelBotonesDer, BorderLayout.EAST);
 
         panelTablaContenedor.add(panelHerramientas, BorderLayout.NORTH);
 
-        // Configuración de la Tabla
+        // Tabla
         modeloTabla = new DefaultTableModel(new String[]{"ID", "Nombres", "Apellidos", "Parentesco", "Cédula", "Dirección"}, 0) {
             @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
+            public boolean isCellEditable(int row, int column) { return false; }
         };
         
         tablaFamiliares = new JTable(modeloTabla);
         estilizarTabla(tablaFamiliares);
-        
-        // Ocultar columna ID visualmente
         tablaFamiliares.removeColumn(tablaFamiliares.getColumnModel().getColumn(0)); 
 
         JScrollPane scroll = new JScrollPane(tablaFamiliares);
@@ -188,16 +223,11 @@ public class VistaFamiliares extends JFrame {
 
         add(panelPrincipal, BorderLayout.CENTER);
 
-        // ==========================================
-        // LÓGICA INTACTA (Eventos y Validaciones)
-        // ==========================================
-
-        // Cargar familiares iniciales
+        // --- EVENTOS ---
         if (cedulaTitularPrevia != null && !cedulaTitularPrevia.isEmpty()) {
             cargarTabla(cedulaTitularPrevia, "");
         }
 
-        // Evento: Seleccionar fila de la tabla
         tablaFamiliares.addMouseListener(new MouseAdapter() {
             public void mouseClicked(MouseEvent evt) {
                 int fila = tablaFamiliares.getSelectedRow();
@@ -221,7 +251,7 @@ public class VistaFamiliares extends JFrame {
             }
         });
 
-        // Acción Guardar
+        // --- ACCIÓN GUARDAR ---
         btnGuardar.addActionListener(e -> {
             String tit = txtCedulaTitular.getText().trim();
             String nom = txtNombres.getText().trim();
@@ -233,6 +263,25 @@ public class VistaFamiliares extends JFrame {
             if (tit.isEmpty() || nom.isEmpty() || par.isEmpty()) {
                 JOptionPane.showMessageDialog(this, "Debe llenar al menos los nombres y el parentesco.", "Advertencia", JOptionPane.WARNING_MESSAGE);
                 return;
+            }
+
+            // VALIDACIÓN EXTRA: Letras en Nombres, Apellidos y Parentesco
+            if (!nom.matches("^[a-zA-ZáéíóúÁÉÍÓÚñÑ\\s]+$") || 
+                !ape.matches("^[a-zA-ZáéíóúÁÉÍÓÚñÑ\\s]+$") || 
+                !par.matches("^[a-zA-ZáéíóúÁÉÍÓÚñÑ\\s]+$")) {
+                JOptionPane.showMessageDialog(this, "Los Nombres, Apellidos y Parentesco solo deben contener letras.", "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            if (!ced.isEmpty() && !ced.equals("V-")) {
+                if (!ced.matches("^V-\\d{7,8}$")) {
+                    JOptionPane.showMessageDialog(this, "La cédula del familiar es inválida. Debe tener entre 7 y 8 números después del V-.", "Error", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+                if (familiarDAO.existeCedulaFamiliar(ced, -1)) {
+                    JOptionPane.showMessageDialog(this, "Esta cédula ya está registrada para otro familiar.", "Error", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
             }
 
             List<String[]> actuales = familiarDAO.obtenerFamiliaresPorTitular(tit);
@@ -251,7 +300,7 @@ public class VistaFamiliares extends JFrame {
             }
         });
 
-        // Acción Editar
+        // --- ACCIÓN EDITAR ---
         btnEditar.addActionListener(e -> {
             if (idFamiliarSeleccionado == -1) {
                 JOptionPane.showMessageDialog(this, "Seleccione un familiar de la tabla para actualizar.", "Advertencia", JOptionPane.WARNING_MESSAGE);
@@ -269,6 +318,25 @@ public class VistaFamiliares extends JFrame {
                 return;
             }
 
+            // VALIDACIÓN EXTRA: Letras en Nombres, Apellidos y Parentesco
+            if (!nom.matches("^[a-zA-ZáéíóúÁÉÍÓÚñÑ\\s]+$") || 
+                !ape.matches("^[a-zA-ZáéíóúÁÉÍÓÚñÑ\\s]+$") || 
+                !par.matches("^[a-zA-ZáéíóúÁÉÍÓÚñÑ\\s]+$")) {
+                JOptionPane.showMessageDialog(this, "Los Nombres, Apellidos y Parentesco solo deben contener letras.", "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            if (!ced.isEmpty() && !ced.equals("V-")) {
+                if (!ced.matches("^V-\\d{7,8}$")) {
+                    JOptionPane.showMessageDialog(this, "La cédula del familiar es inválida. Debe tener entre 7 y 8 números después del V-.", "Error", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+                if (familiarDAO.existeCedulaFamiliar(ced, idFamiliarSeleccionado)) {
+                    JOptionPane.showMessageDialog(this, "Esta cédula ya está registrada para otro familiar.", "Error", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+            }
+
             boolean exito = familiarDAO.actualizarFamiliar(idFamiliarSeleccionado, nom, ape, par, ced, dir);
             if (exito) {
                 JOptionPane.showMessageDialog(this, "¡Familiar actualizado con éxito!", "Éxito", JOptionPane.INFORMATION_MESSAGE);
@@ -279,7 +347,7 @@ public class VistaFamiliares extends JFrame {
             }
         });
 
-        // Acción Eliminar
+        // --- ACCIÓN ELIMINAR ---
         btnEliminar.addActionListener(e -> {
             int fila = tablaFamiliares.getSelectedRow();
             if (fila == -1) {
@@ -306,7 +374,8 @@ public class VistaFamiliares extends JFrame {
             }
         });
 
-        // Filtro en tiempo real
+        btnVolverClientes.addActionListener(e -> dispose());
+
         txtBuscarFamiliar.addKeyListener(new KeyAdapter() {
             public void keyReleased(KeyEvent evt) {
                 cargarTabla(cedulaTitularPrevia, txtBuscarFamiliar.getText().trim());
@@ -314,9 +383,21 @@ public class VistaFamiliares extends JFrame {
         });
     }
 
-    // ==========================================
-    // MÉTODOS AUXILIARES DE DISEÑO
-    // ==========================================
+    private String obtenerNombreTitular(String cedula) {
+        if (cedula == null || cedula.isEmpty()) return "";
+        String sql = "SELECT nombre FROM clientes WHERE cedula = ?";
+        try (Connection conn = ConexionBD.conectar();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, cedula);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) return rs.getString("nombre");
+            }
+        } catch (SQLException e) {
+            System.err.println("Error al buscar nombre del titular: " + e.getMessage());
+        }
+        return "Desconocido";
+    }
+
     private JTextField crearTextFieldEstilizado() {
         JTextField tf = new JTextField(15);
         tf.setBorder(BorderFactory.createCompoundBorder(
@@ -355,7 +436,7 @@ public class VistaFamiliares extends JFrame {
             public Component getTableCellRendererComponent(JTable t, Object v,
                     boolean sel, boolean foc, int row, int col) {
                 JLabel l = (JLabel) super.getTableCellRendererComponent(t, v, sel, foc, row, col);
-                l.setBackground(new Color(44, 62, 80));
+                l.setBackground(C_PRIMARY);
                 l.setForeground(Color.WHITE);
                 l.setFont(new Font("Segoe UI", Font.BOLD, 12));
                 l.setOpaque(true);
@@ -385,12 +466,28 @@ public class VistaFamiliares extends JFrame {
         txtNombres.setText("");
         txtApellidos.setText("");
         txtParentesco.setText("");
-        txtCedulaFamiliar.setText("");
+        txtCedulaFamiliar.setText("V-");
         txtDireccion.setText("");
         idFamiliarSeleccionado = -1;
         btnGuardar.setEnabled(true);
         btnEditar.setEnabled(false);
         tablaFamiliares.clearSelection();
         txtNombres.requestFocus();
+    }
+    
+    // Método para que solo se puedan escribir letras y espacios
+    private void aplicarFiltroLetras(JTextField campo) {
+        ((AbstractDocument) campo.getDocument()).setDocumentFilter(new DocumentFilter() {
+            @Override
+            public void replace(FilterBypass fb, int offset, int length, String text, AttributeSet attrs) throws BadLocationException {
+                String currentText = fb.getDocument().getText(0, fb.getDocument().getLength());
+                String newText = currentText.substring(0, offset) + text + currentText.substring(offset + length);
+                
+                // Solo permite letras (mayúsculas, minúsculas, acentos, ñ) y espacios
+                if (newText.matches("^[a-zA-ZáéíóúÁÉÍÓÚñÑ\\s]*$")) {
+                    super.replace(fb, offset, length, text, attrs);
+                }
+            }
+        });
     }
 }
